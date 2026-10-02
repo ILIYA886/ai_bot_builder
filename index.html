@@ -1,0 +1,54 @@
+export default {
+  async fetch(request, env) {
+    if (request.method !== "POST") {
+      return new Response("Bot Engine is Running!", { status: 200 });
+    }
+
+    try {
+      const update = await request.json();
+      
+      if (update.message && update.message.text) {
+        const chatId = update.message.chat.id;
+        const userMessage = update.message.text;
+
+        // دریافت تنظیمات از محیط یا درخواست
+        const systemPrompt = env.SYSTEM_PROMPT || "تو یک دستیار هوشمند هستی.";
+        const geminiApiKey = env.GEMINI_API_KEY;
+        const telegramToken = env.TELEGRAM_BOT_TOKEN;
+
+        // ۱. ارسال متن کاربر به Gemini API
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${geminiApiKey}`;
+        const geminiRes = await fetch(geminiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [{ text: `${systemPrompt}\n\nسوال کاربر: ${userMessage}` }]
+              }
+            ]
+          })
+        });
+
+        const geminiData = await geminiRes.json();
+        const replyText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "متأسفانه پاسخی دریافت نشد.";
+
+        // ۲. ارسال پاسخ Gemini به تلگرام
+        const telegramUrl = `https://api.telegram.org/bot${telegramToken}/sendMessage`;
+        await fetch(telegramUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: replyText
+          })
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+
+    return new Response("OK", { status: 200 });
+  }
+};
